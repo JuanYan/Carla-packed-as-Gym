@@ -15,6 +15,7 @@
     ```
     pip install -e . 
     ```
+    
     Carla_0.8.4 fix the collision counting problem and is requred here. 
 
 2. To use, import the gym_carla package in the code, together with gym. 
