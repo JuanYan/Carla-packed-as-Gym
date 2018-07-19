@@ -20,6 +20,7 @@ class ImageViewer(SimpleImageViewer):
     def imshow(self, arr):
         if self.window is None:
             height, width, _channels = arr.shape
+            # change the default window size
             self.window = pyglet.window.Window(width=width, height=height, display=self.display,
                                                vsync=False, resizable=True)
             self.width = width
@@ -53,7 +54,7 @@ class CarlaEnv(gym.Env):
     action_space = None
     observation_space = None
 
-    def __init__(self, ):
+    def __init__(self, target=(158.08, 27.18)):
         # action space range: steer, throttle, brake
         min_steer, max_steer = -1, 1
         min_throttle, max_throttle = 0, 1
@@ -69,7 +70,7 @@ class CarlaEnv(gym.Env):
         self.viewer = ImageViewer()
         self.rng = np.random.RandomState()  # used for random number generators
 
-        self.target = np.array(carla_config.TARGET)
+        self.target = np.array(target)
         self.cur_image = None
         self.cur_measurements = None
 
@@ -94,7 +95,7 @@ class CarlaEnv(gym.Env):
         if mode == 'rgb_array':
             return self.cur_image
         elif mode == 'human':
-            self.viewer.imshow(arr=self.cur_image.transpose([1, 2, 0]))
+            self.viewer.imshow(arr=self.cur_image)
             return self.viewer.isopen
         else:
             super(CarlaEnv, self).render(mode=mode)  # just raise an exception
@@ -133,12 +134,12 @@ class CarlaEnv(gym.Env):
 
         return image, reward, done, measurements
 
-    def reset(self):
+    def _load_settings(self, settings):
+        """Load Carla settings
+        Override to customize settings
+        :param settings: default settings
+        :return: new settings
         """
-        Resets the state of the environment and returns an initial observation.
-        :return: observation (object): the initial observation of the space.
-        """
-        settings = CarlaSettings()
         settings.set(
             SynchronousMode=True,
             SendNonPlayerAgentsInfo=True,
@@ -154,24 +155,38 @@ class CarlaEnv(gym.Env):
         # Set its position relative to the car in meters.
         camera0.set_position(0.30, 0, 1.30)
         settings.add_sensor(camera0)
+        return settings
 
+    def reset(self):
+        """
+        Resets the state of the environment and returns an initial observation.
+        :return: observation (object): the initial observation of the space.
+        """
+        # load Carla settings
+        settings = CarlaSettings()
+        settings = self._load_settings(settings)
         scene = self.carla_client.load_settings(settings)
-
-        self.cur_measurements = None
-        self.cur_image = None
 
         # define a random starting point of the agent for the appropriate training
         number_of_player_starts = len(scene.player_start_spots)
         player_start = self.rng.randint(0, max(0, number_of_player_starts - 1))
-        # player_start = 140
         self.carla_client.start_episode(player_start)
         print(f'Starting new episode at {scene.map_name}, {player_start}...')
 
         # read and return status after reset
-        measurements, image = self._read_data()
+        self.cur_measurements, self.cur_image = self._read_data()
 
-        return image
+        return self.cur_image
+    
+    def _get_sensor_data(self, sensor_data):
+        """Extract sensor data from multi sensor dict
+        Override to customize which sensor (Camera/LiDar) to use        
+        :param sensor_data: multi sensor dict
+        :type sensor_data: extracted sensor data
+        """
+        return sensor_data['CameraRGB'].data
 
+    
     def _read_data(self, ):
         """
         read data from carla
@@ -205,20 +220,14 @@ class CarlaEnv(gym.Env):
             'distance': distance,
             'autopilot_control': p_meas.autopilot_control
         }
-        message = 'Vehicle at %.1f, %.1f, ' % (pos_x, pos_y)
-        message += '%.0f km/h, ' % (speed,)
-        message += 'Collision: vehicles=%.0f, pedestrians=%.0f, other=%.0f, ' % (col_cars, col_ped, col_other,)
-        message += '%.0f%% other lane, %.0f%% off-road, ' % (other_lane, offroad,)
-        message += '%d non-player agents in the scene.' % (agents_num,)
-        # print(message)
 
-        return meas, sensor_data['CameraRGB'].data.transpose([2, 0, 1])  # transpose into order (CHW)
+        return meas, self._get_sensor_data(sensor_data)
 
     def _reward(self, pre_measurements, cur_measurements):
         """
-
-        :param pre_measurements:
-        :param cur_measurements:
+        Calculate reward
+        :param pre_measurements: previous measurement
+        :param cur_measurements: latest measurement
         :return: reward
         """
 
@@ -230,18 +239,12 @@ class CarlaEnv(gym.Env):
         else:
             rwd = 0.05 * delta('speed') - 0.002 * delta('col_damage') \
                   - 2 * delta('offroad') - 2 * delta('other_lane')
-            # print('delta speed %.3f' % delta('speed') )
-            # print('[pre_offroad, current_offroad] =[%.2f, %.2f], reward: %.2f' %
-            # (self.pre_measurements['offroad'], self.cur_measurements['offroad'], reward))
-
-        # 1000 * delta('distance') +  ignore the distance for auto-pilot
-
         return rwd
 
     def _done(self, cur_measurements):
         """
-
-        :param cur_measurements:
+        Check done or not
+        :param cur_measurements: latest measurement
         :return:
         """
         # check distance to target
@@ -250,11 +253,16 @@ class CarlaEnv(gym.Env):
 
     def close(self):
         """
-
+        Close connection to Carla
         :return:
         """
         self.carla_client.disconnect()
         self.viewer.close()
 
     def seed(self, seed=None):
+        """Set seed for random number generators used in the code
+        Set seed so that results are consistent in multi runs
+        
+        :param seed: seed number, defaults to None
+        """
         self.rng = np.random.RandomState(seed)
