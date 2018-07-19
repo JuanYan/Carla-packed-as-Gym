@@ -6,28 +6,28 @@
 
     to copy & install
 
-    ```bash
+    ```
     pip install .
     ```
 
     to be able to edit the code and install:
 
-    ```bash
+    ```
     pip install -e . 
     ```
 
 2. To use, import the gym_carla package in the code, together with gym. 
 
     
-    ```python
+    ```
     import gym
     ```
     
-    ```python
+    ```
     import gym_carla
     ```
     
-    ```python
+    ```
     client = gym.make('Carla-v0')
     ```
     
