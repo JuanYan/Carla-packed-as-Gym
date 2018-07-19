@@ -2,15 +2,15 @@
 
 ## How to use
 
-1. Install the Carla library into python path
+1. Install the Carla library into Python.
 
-   Cd to Carla/PythonClient folder, then type:
+    CD to Carla/PythonClient folder, then type:
 
     ```
     pip install -e .
     ```
 
-2. install the package, cd to gym-carla folder, then either:
+2. install the package, CD to gym-carla folder, then either:
 
     to copy & install
 
