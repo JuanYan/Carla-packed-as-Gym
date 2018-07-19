@@ -1,0 +1,1 @@
+CarlaUE4.exe /Game/Maps/Town02 -carla-server -benchmark -fps=15 -windowed -ResX=800 -ResY=600 -carla-settings="./CarlaSettings.ini" 
