@@ -181,10 +181,10 @@ class CarlaEnv(gym.Env):
             img = np.ascontiguousarray(img, dtype=np.float32) / 255
             return img
 
-        pre_image = image_proc(pre_image)
+        # pre_image = image_proc(pre_image)
         cur_image = image_proc(cur_image)
-        # CHW
-        return cur_image - pre_image
+        # CHW, use current image as state
+        return cur_image
 
     def _load_settings(self, settings):
         """Load Carla settings
