@@ -6,7 +6,7 @@ if __name__ == "__main__":
     client.seed(0)
     image = client.reset()
     action = np.array([0, 0, 0])
-    for i in range(100):
+    for i in range(1000):
         image, reward, done, measurements = client.step(action)
         client.render()
         action = measurements['autopilot_control']

@@ -59,8 +59,8 @@ class CarlaEnv(gym.Env):
         min_steer, max_steer = -1, 1
         min_throttle, max_throttle = 0, 1
         min_brake, max_brake = 0, 1
-        self.action_space = spaces.Box(low=np.array([min_steer, min_throttle, min_brake]),
-                                       high=np.array([max_steer, max_throttle, max_brake]),
+        self.action_space = spaces.Box(low=np.array([min_steer, -max_brake]),
+                                       high=np.array([max_steer, max_throttle]),
                                        dtype=np.float32)
         # observation, 3 channel image
         self.observation_space = spaces.Box(low=0, high=1.0,
@@ -71,7 +71,7 @@ class CarlaEnv(gym.Env):
         self.rng = np.random.RandomState()  # used for random number generators
 
         self.target = np.array(target)
-        self.cur_image = None
+        self.cur_image = None  # image with (H, W, C)
         self.cur_measurements = None
 
         self.carla_client = CarlaClient(carla_config.CARLA_HOST_ADDRESS, carla_config.CARLA_HOST_PORT, timeout=100)
@@ -81,6 +81,28 @@ class CarlaEnv(gym.Env):
         else:
             print("Failed to connect", end=" ")
         print(f"Carla on {carla_config.CARLA_HOST_ADDRESS}:{carla_config.CARLA_HOST_PORT}")
+
+    def reset(self):
+        """
+        Resets the state of the environment and returns an initial observation.
+        :return: observation (object): the initial observation of the space.
+        """
+        # load Carla settings
+        settings = CarlaSettings()
+        settings = self._load_settings(settings)
+        scene = self.carla_client.load_settings(settings)
+
+        # define a random starting point of the agent for the appropriate training
+        number_of_player_starts = len(scene.player_start_spots)
+        player_start = self.rng.randint(0, max(0, number_of_player_starts - 1))
+        self.carla_client.start_episode(player_start)
+        print(f'Starting new episode at {scene.map_name}, {player_start}...')
+
+        # read and return status after reset
+        self.cur_measurements, self.cur_image = self._read_data()
+        state = self._state(self.cur_image, self.cur_image)
+
+        return state
 
     def render(self, mode='human'):
         """Renders the environment.
@@ -108,7 +130,7 @@ class CarlaEnv(gym.Env):
 
         Accepts an action and returns a tuple (observation, reward, done, info).
 
-        :param action: an action provided by the environment, dict of control signals, such as {'steer':0, 'throttle':0.2}, or array
+        :param action: an action provided by the environment
         :return: observation (object): agent's observation of the current environment
                 reward (float) : amount of reward returned after previous action
                 done (boolean): whether the episode has ended, in which case further step() calls will return undefined results
@@ -117,7 +139,9 @@ class CarlaEnv(gym.Env):
         if isinstance(action, dict):
             self.carla_client.send_control(**action)
         elif isinstance(action, np.ndarray):  # parse control from array
-            self.carla_client.send_control(steer=action[0], throttle=action[1], brake=action[2])
+            throttle = max(0, action[1])
+            brake = max(0, -action[1])
+            self.carla_client.send_control(steer=action[0], throttle=throttle, brake=brake)
         else:
             self.carla_client.send_control(action)
 
@@ -127,12 +151,40 @@ class CarlaEnv(gym.Env):
         # calculate reward
         reward = self._reward(self.cur_measurements, measurements)
         done = self._done(measurements)
+        state = self._state(self.cur_image, image)
 
         # save current measurements for next use
         self.cur_measurements = measurements
         self.cur_image = image
 
-        return image, reward, done, measurements
+        return state, reward, done, measurements
+
+    def close(self):
+        """
+        Close connection to Carla
+        :return:
+        """
+        self.carla_client.disconnect()
+        self.viewer.close()
+
+    def seed(self, seed=None):
+        """Set seed for random number generators used in the code
+        Set seed so that results are consistent in multi runs
+        
+        :param seed: seed number, defaults to None
+        """
+        self.rng = np.random.RandomState(seed)
+
+    def _state(self, pre_image, cur_image):
+        def image_proc(img):
+            img = img.transpose(2, 0, 1)
+            img = np.ascontiguousarray(img, dtype=np.float32) / 255
+            return img
+
+        pre_image = image_proc(pre_image)
+        cur_image = image_proc(cur_image)
+        # CHW
+        return cur_image - pre_image
 
     def _load_settings(self, settings):
         """Load Carla settings
@@ -151,33 +203,12 @@ class CarlaEnv(gym.Env):
         # CAMERA
         camera0 = Camera('CameraRGB', PostProcessing='SceneFinal')
         # Set image resolution in pixels.
-        camera0.set_image_size(800, 600)
+        camera0.set_image_size(carla_config.CARLA_IMG_HEIGHT, carla_config.CARLA_IMG_WIDTH)
         # Set its position relative to the car in meters.
         camera0.set_position(0.30, 0, 1.30)
         settings.add_sensor(camera0)
         return settings
 
-    def reset(self):
-        """
-        Resets the state of the environment and returns an initial observation.
-        :return: observation (object): the initial observation of the space.
-        """
-        # load Carla settings
-        settings = CarlaSettings()
-        settings = self._load_settings(settings)
-        scene = self.carla_client.load_settings(settings)
-
-        # define a random starting point of the agent for the appropriate training
-        number_of_player_starts = len(scene.player_start_spots)
-        player_start = self.rng.randint(0, max(0, number_of_player_starts - 1))
-        self.carla_client.start_episode(player_start)
-        print(f'Starting new episode at {scene.map_name}, {player_start}...')
-
-        # read and return status after reset
-        self.cur_measurements, self.cur_image = self._read_data()
-
-        return self.cur_image
-    
     def _get_sensor_data(self, sensor_data):
         """Extract sensor data from multi sensor dict
         Override to customize which sensor (Camera/LiDar) to use        
@@ -186,7 +217,6 @@ class CarlaEnv(gym.Env):
         """
         return sensor_data['CameraRGB'].data
 
-    
     def _read_data(self, ):
         """
         read data from carla
@@ -250,19 +280,3 @@ class CarlaEnv(gym.Env):
         # check distance to target
         d = cur_measurements['distance'] < 1  # final state arrived or not
         return d
-
-    def close(self):
-        """
-        Close connection to Carla
-        :return:
-        """
-        self.carla_client.disconnect()
-        self.viewer.close()
-
-    def seed(self, seed=None):
-        """Set seed for random number generators used in the code
-        Set seed so that results are consistent in multi runs
-        
-        :param seed: seed number, defaults to None
-        """
-        self.rng = np.random.RandomState(seed)
