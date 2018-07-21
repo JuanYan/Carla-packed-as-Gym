@@ -1,1 +1,1 @@
-CarlaUE4.sh /Game/Maps/Town02 -carla-server -benchmark -fps=15 -windowed -ResX=800 -ResY=600 -carla-settings="./CarlaSettings.ini" 
+/home/jy18/CARLA_0.8.4/CarlaUE4.sh /Game/Maps/Town01 -carla-server -benchmark -fps=15 -windowed -ResX=800 -ResY=600 -carla-settings="./CarlaSettings.ini" 

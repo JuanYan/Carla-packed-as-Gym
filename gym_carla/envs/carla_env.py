@@ -100,9 +100,10 @@ class CarlaEnv(gym.Env):
 
         # read and return status after reset
         self.cur_measurements, self.cur_image = self._read_data()
-        state = self._state(self.cur_image, self.cur_image)
+        state = self._state(self.cur_image, self.cur_image)   #possibly revise the state to be some operation of several images.
+        meas, _ = self._read_data()
 
-        return state
+        return state, meas
 
     def render(self, mode='human'):
         """Renders the environment.
