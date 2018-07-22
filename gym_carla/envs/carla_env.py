@@ -101,8 +101,7 @@ class CarlaEnv(gym.Env):
         # read and return status after reset
         self.cur_measurements, self.cur_image = self._read_data()
         state = self._state(self.cur_image, self.cur_image)   #possibly revise the state to be some operation of several images.
-        meas, _ = self._read_data()
-
+        meas =  self.cur_measurements
         return state, meas
 
     def render(self, mode='human'):
@@ -268,7 +267,7 @@ class CarlaEnv(gym.Env):
         if pre_measurements is None:
             rwd = 0.0
         else:
-            rwd = 0.05 * delta('speed') - 0.002 * delta('col_damage') \
+            rwd = 0.15 * delta('speed') - 0.002 * delta('col_damage') \
                   - 2 * delta('offroad') - 2 * delta('other_lane')
         return rwd
 
